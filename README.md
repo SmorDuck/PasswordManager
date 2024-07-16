@@ -27,19 +27,19 @@
 
 1. Клонируем репозиторий:
 
-    ``sh
+    ```sh
     git-клонирование https://github.com/yourusername/PasswordManager.git
     ```
 
 2. Перейдите в каталог проекта:
 
-    ``sh
+    ```sh
     cd PasswordManager
     ```
 
 3. Запустите приложение:
 
-    ``sh
+    ```sh
     запустите dotnet
     ```
 
