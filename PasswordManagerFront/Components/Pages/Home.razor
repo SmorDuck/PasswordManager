@@ -1,0 +1,169 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@inject HttpClient HttpClient
+@using PasswordManagerFront.Services
+@using Domain.Model
+
+@inject PasswordServices PasswordService
+
+<h3>Менеджер паролей</h3>
+
+<button class="btn-add" @onclick="ShowAddEntryModal">Добавить запись</button>
+<input class="search-input" type="text" @bind="searchQuery" @bind:event="oninput" placeholder="Поиск..." />
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="error-message">@errorMessage</div>
+}
+
+<table class="password-table">
+    <thead>
+        <tr>
+            <th>Наименование</th>
+            <th>Пароль</th>
+            <th>Дата записи</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var entry in filteredEntries)
+        {
+            <tr>
+                <td>@entry.Name</td>
+                <td class="password-cell" @onclick="() => TogglePasswordVisibility(entry)">@GetPasswordDisplay(entry)</td>
+                <td>@entry.DataCreated.ToShortDateString()</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (showAddEntryModal)
+{
+    <div class="modal">
+        <div class="modal-content">
+            <h3>Добавить новую запись</h3>
+            <input type="text" @bind="newEntry.Name" placeholder="Наименование" />
+            <input type="password" @bind="newEntry.Password" placeholder="Пароль" />
+            <select @bind="newEntry.Type">
+                <option value="site">Сайт</option>
+                <option value="email">Электронная почта</option>
+            </select>
+            <div>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="error-message">@errorMessage</div>
+                }
+                <button class="btn-save" @onclick="SaveEntry">Сохранить</button>
+                <button class="btn-cancel" @onclick="CloseAddEntryModal">Отмена</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PasswordEntity> entries = new();
+    private string searchQuery = string.Empty;
+    private PasswordEntity newEntry = new PasswordEntity { Type = "site" };
+    private bool showAddEntryModal = false;
+    private string errorMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntries();
+    }
+
+    private async Task LoadEntries()
+    {
+        try
+        {
+            entries = await PasswordService.GetPasswordEntities();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка загрузки записей: {ex.Message}";
+        }
+    }
+
+    private void ShowAddEntryModal()
+    {
+        showAddEntryModal = true;
+        newEntry = new PasswordEntity { Type = "site" };
+        errorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private void CloseAddEntryModal()
+    {
+        showAddEntryModal = false;
+        errorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task SaveEntry()
+    {
+        // Валидация формы
+        if (string.IsNullOrWhiteSpace(newEntry.Name))
+        {
+            errorMessage = "Наименование обязательно для заполнения.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newEntry.Password) || newEntry.Password.Length < 8)
+        {
+            errorMessage = "Пароль обязателен для заполнения и должен содержать минимум 8 символов.";
+            return;
+        }
+
+        if (newEntry.Type == "email" && !IsValidEmail(newEntry.Name))
+        {
+            errorMessage = "Неверный email адрес.";
+            return;
+        }
+
+        try
+        {
+            var response = await PasswordService.AddPasswordEntity(newEntry);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadEntries();
+                CloseAddEntryModal();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Ошибка сохранения записи: {response.ReasonPhrase}. Детали: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка сохранения записи: {ex.Message}";
+        }
+    }
+
+    private bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void TogglePasswordVisibility(PasswordEntity entry)
+    {
+        entry.Password = entry.Password.StartsWith("•") ? entry.Password.TrimStart('•') : "•" + entry.Password;
+    }
+
+    private string GetPasswordDisplay(PasswordEntity entry)
+    {
+        return entry.Password.StartsWith("•") ? entry.Password : new string('•', entry.Password.Length);
+    }
+
+    private IEnumerable<PasswordEntity> filteredEntries => string.IsNullOrWhiteSpace(searchQuery)
+        ? entries
+        : entries.Where(e => e.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+}
